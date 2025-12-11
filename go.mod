@@ -1,10 +1,12 @@
 module github.com/KillAllChickens/m_backend
 
-go 1.25.5
+go 1.25.0
 
 require (
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/gofiber/fiber/v3 v3.0.0-rc.3
+	github.com/joho/godotenv v1.5.1
+	resty.dev/v3 v3.0.0-beta.4
 )
 
 require (
@@ -13,7 +15,6 @@ require (
 	github.com/gofiber/schema v1.6.0 // indirect
 	github.com/gofiber/utils/v2 v2.0.0-rc.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -25,5 +26,4 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
-	resty.dev/v3 v3.0.0-beta.4 // indirect
 )
