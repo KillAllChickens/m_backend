@@ -5,7 +5,9 @@ import (
 	// "github.com/PuerkitoBio/goquery"
 
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -34,7 +36,18 @@ func FebboxAPI(app *fiber.App) {
 		"x-requested-with": "XMLHttpRequest",
 		"user-agent":       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
 	}
+	// uIToken := env.Get("FEBBOX_UI_COOKIE", "")
+	_ = env.Load()
+
+	// 2. Get the token safely
+	// We try the library first, then fall back to standard os.Getenv to ensure
+	// it works with Docker -e flags or system exports.
 	uIToken := env.Get("FEBBOX_UI_COOKIE", "")
+	if uIToken == "" {
+		uIToken = os.Getenv("FEBBOX_UI_COOKIE")
+	}
+
+	fmt.Println(uIToken)
 
 	client.SetHeaders(defaultHeaders)
 	client.SetCookie(&http.Cookie{Name: "ui", Value: uIToken})
@@ -93,9 +106,10 @@ func FebboxAPI(app *fiber.App) {
 		}
 
 		// 2. Unmarshal the JSON response
+		return c.Send(resp.Bytes())
 		var data map[string]interface{}
 		if err := json.Unmarshal(resp.Bytes(), &data); err != nil {
-			return c.Status(500).SendString("Error parsing JSON")
+			return c.Status(500).SendString(err.Error())
 		}
 
 		// 3. Extract the HTML string
