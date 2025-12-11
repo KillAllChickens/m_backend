@@ -10,10 +10,10 @@ import (
 )
 
 func main() {
-	err := godotenv.Load() // 👈 load .env file
-	if err != nil {
-		log.Fatal(err)
-	}
+	// err := godotenv.Load()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	app := fiber.New()
 

@@ -12,6 +12,9 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gofiber/fiber/v3"
 	"resty.dev/v3"
+
+ "github.com/cloudresty/go-env"
+
 )
 
 type VideoQuality struct {
@@ -33,7 +36,7 @@ func FebboxAPI(app *fiber.App) {
 		"x-requested-with": "XMLHttpRequest",
 		"user-agent":       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
 	}
-	uIToken := os.Getenv("FEBBOX_UI_COOKIE")
+	uIToken := env.Get("FEBBOX_UI_COOKIE", "")
 
 	client.SetHeaders(defaultHeaders)
 	client.SetCookie(&http.Cookie{Name: "ui", Value: uIToken})
