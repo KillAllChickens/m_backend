@@ -6,15 +6,13 @@ import (
 
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gofiber/fiber/v3"
 	"resty.dev/v3"
 
- "github.com/cloudresty/go-env"
-
+	"github.com/cloudresty/go-env"
 )
 
 type VideoQuality struct {
