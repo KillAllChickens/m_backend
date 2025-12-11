@@ -1,12 +1,8 @@
 package main
 
 import (
-	"log"
-
 	"github.com/KillAllChickens/m_backend/routes"
 	"github.com/gofiber/fiber/v3"
-
-	"github.com/joho/godotenv"
 )
 
 func main() {
