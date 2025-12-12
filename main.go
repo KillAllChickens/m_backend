@@ -18,7 +18,12 @@ func main() {
 	app := fiber.New()
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"https://*.killallchickens.org", "http://*.killallchickens.org"},
+		AllowOrigins: []string{
+			"https://*.killallchickens.org",
+			"http://*.killallchickens.org",
+			// firebase URLS
+			"https://*.web.app",
+			"https://*.firebaseapp.com"},
 		AllowHeaders: []string{"Origin", "Content-Type", "Accept"},
 	}))
 
