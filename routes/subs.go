@@ -33,11 +33,6 @@ type SubtitleResponse struct {
 	Error string     `json:"error,omitempty"`
 }
 
-// ImdbResponse is used to decode the IMDB API
-type ImdbResponse struct {
-	Imdb string `json:"imdb"`
-}
-
 func SubtitleRoutes(app *fiber.App) {
 	subsGroup := app.Group("/api/")
 
@@ -48,12 +43,10 @@ func SubtitleRoutes(app *fiber.App) {
 			return c.Status(400).JSON(SubtitleResponse{Error: "Missing FID"})
 		}
 
-		// Define paths
 		cwd, _ := os.Getwd()
 		subsRoot := filepath.Join(cwd, "subtitles")
 		fidDir := filepath.Join(subsRoot, fid)
 
-		// 1. Check if files already exist locally
 		if _, err := os.Stat(fidDir); err == nil {
 			entries, err := os.ReadDir(fidDir)
 			if err == nil {
@@ -81,8 +74,9 @@ func SubtitleRoutes(app *fiber.App) {
 			}
 		}
 
-		// 2. Fetch IMDB ID
 		imdbURL := fmt.Sprintf("https://feb.superstudies.site/api/febbox/imdb?fid=%s", fid)
+		// imdbURL := fmt.Sprintf("%s://%s/api/febbox/imdb?fid=%s", c.Protocol(), c.Hostname(), fid)
+		// fmt.Println(imdbURL)
 		resp, err := http.Get(imdbURL)
 		if err != nil || resp.StatusCode != 200 {
 			return c.Status(404).JSON(SubtitleResponse{Error: "Failed to fetch IMDB ID"})
@@ -90,18 +84,16 @@ func SubtitleRoutes(app *fiber.App) {
 		defer resp.Body.Close()
 
 		var imdbData ImdbResponse
-		if err := json.NewDecoder(resp.Body).Decode(&imdbData); err != nil || imdbData.Imdb == "" {
+		if err := json.NewDecoder(resp.Body).Decode(&imdbData); err != nil || imdbData.IMDBId == "" {
 			return c.Status(404).JSON(SubtitleResponse{Error: "No IMDB ID found"})
 		}
 
-		// 3. Scrape YTS for the list of subtitles
-		ytsURL := fmt.Sprintf("https://yts-subs.com/movie-imdb/%s", imdbData.Imdb)
+		ytsURL := fmt.Sprintf("https://yts-subs.com/movie-imdb/%s", imdbData.IMDBId)
 		doc, err := loadHTML(ytsURL)
 		if err != nil {
 			return c.Status(404).JSON(SubtitleResponse{Error: "Subtitles not found"})
 		}
 
-		// Find English links
 		var detailLinks []string
 		doc.Find("tr").Each(func(i int, s *goquery.Selection) {
 			// YTS structure: 2nd TD is language, 5th TD is link
@@ -118,33 +110,27 @@ func SubtitleRoutes(app *fiber.App) {
 			return c.Status(404).JSON(SubtitleResponse{Error: "English subtitles not found"})
 		}
 
-		// Limit to top 3
 		if len(detailLinks) > 3 {
 			detailLinks = detailLinks[:3]
 		}
 
-		// Ensure directory exists
 		os.MkdirAll(fidDir, 0755)
 
-		// 4. Concurrent Processing
 		type ProcessResult struct {
 			Index int
 			Sub   Subtitle
 			Err   error
 		}
 
-		// Channel to collect results safely
 		resultsChan := make(chan ProcessResult, len(detailLinks))
 		var wg sync.WaitGroup
 
 		for i, link := range detailLinks {
 			wg.Add(1)
 
-			// Start Goroutine
 			go func(idx int, urlPath string) {
 				defer wg.Done()
 
-				// Scrape the specific subtitle page
 				fullURL := "https://yts-subs.com" + urlPath
 				subDoc, err := loadHTML(fullURL)
 				if err != nil {
@@ -152,7 +138,6 @@ func SubtitleRoutes(app *fiber.App) {
 					return
 				}
 
-				// Find download button and decode base64 link
 				btn := subDoc.Find("a#btn-download-subtitle")
 				encodedLink, exists := btn.Attr("data-link")
 				if !exists {
@@ -167,7 +152,6 @@ func SubtitleRoutes(app *fiber.App) {
 				}
 				zipURL := string(decodedLinkBytes)
 
-				// Download ZIP
 				zipResp, err := http.Get(zipURL)
 				if err != nil {
 					resultsChan <- ProcessResult{Index: idx, Err: err}
@@ -177,14 +161,12 @@ func SubtitleRoutes(app *fiber.App) {
 
 				bodyBytes, _ := io.ReadAll(zipResp.Body)
 
-				// Open ZIP
 				zipReader, err := zip.NewReader(bytes.NewReader(bodyBytes), int64(len(bodyBytes)))
 				if err != nil {
 					resultsChan <- ProcessResult{Index: idx, Err: err}
 					return
 				}
 
-				// Find .srt file
 				var srtContent []byte
 				for _, zf := range zipReader.File {
 					if strings.HasSuffix(strings.ToLower(zf.Name), ".srt") {
@@ -202,10 +184,8 @@ func SubtitleRoutes(app *fiber.App) {
 					return
 				}
 
-				// Convert to VTT
 				vttContent := srtToVtt(srtContent)
 
-				// Save file
 				fileName := fmt.Sprintf("%d.vtt", idx+1)
 				savePath := filepath.Join(fidDir, fileName)
 				err = os.WriteFile(savePath, vttContent, 0644)
@@ -214,7 +194,6 @@ func SubtitleRoutes(app *fiber.App) {
 					return
 				}
 
-				// Success result
 				src := fmt.Sprintf("%s/subtitles/%s/%s", c.BaseURL(), fid, fileName)
 				resultsChan <- ProcessResult{
 					Index: idx,
@@ -230,9 +209,7 @@ func SubtitleRoutes(app *fiber.App) {
 		wg.Wait()
 		close(resultsChan)
 
-		// Collect results
 		var finalSubs []Subtitle
-		// Create a map to ensure we return them in order 1, 2, 3 even if they finish out of order
 		resultsMap := make(map[int]Subtitle)
 
 		for res := range resultsChan {
@@ -243,7 +220,6 @@ func SubtitleRoutes(app *fiber.App) {
 			}
 		}
 
-		// Rebuild slice in order
 		for i := 0; i < len(detailLinks); i++ {
 			if sub, ok := resultsMap[i]; ok {
 				finalSubs = append(finalSubs, sub)
@@ -257,10 +233,6 @@ func SubtitleRoutes(app *fiber.App) {
 		return c.JSON(SubtitleResponse{Subs: finalSubs})
 	})
 
-	// Serve the static files for subtitles
-	// Equivalent to: @app.route('/subtitles/<fid>/<path:filename>')
-
-	// app.Static("/subtitles", "./subtitles")
 	app.Use("/subtitles", static.New("./subtitles"))
 }
 
@@ -280,9 +252,6 @@ func loadHTML(url string) (*goquery.Document, error) {
 
 // Helper to convert SRT bytes to VTT bytes
 func srtToVtt(srt []byte) []byte {
-	// Simple decoding strategy (Go defaults to UTF-8, handling Latin-1 manually is complex
-	// without external libs, but YTS is usually UTF-8).
-	// We sanitize basic string issues.
 
 	content := string(srt)
 	// Normalize line endings
@@ -296,12 +265,10 @@ func srtToVtt(srt []byte) []byte {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 
-		// 1. Skip numeric identifiers (e.g. just "1" or "25")
 		if isNumeric(line) {
 			continue
 		}
 
-		// 2. Fix timestamps: 00:00:01,000 --> 00:00:04,000 becomes ... .000
 		if strings.Contains(line, "-->") {
 			line = strings.ReplaceAll(line, ",", ".")
 		}

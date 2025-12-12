@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gofiber/fiber/v3"
+	"github.com/patrickmn/go-cache"
 	"resty.dev/v3"
 
 	"github.com/cloudresty/go-env"
@@ -25,11 +27,18 @@ type VideoQuality struct {
 	Size    string `json:"size"`
 }
 
+type ImdbResponse struct {
+	IMDBId string `json:"imdb"`
+}
+
+
 func FebboxAPI(app *fiber.App) {
 	febGroup := app.Group("/api/febbox")
 
+	linkCache := cache.New(10*time.Minute, 20*time.Minute)
+
 	client := resty.New()
-	defer client.Close()
+	// defer client.Close()
 
 	baseURL := "https://www.febbox.com"
 	defaultHeaders := map[string]string{
@@ -95,8 +104,10 @@ func FebboxAPI(app *fiber.App) {
 			return c.Status(400).JSON(fiber.Map{"error": "fid and shareKey are required"})
 		}
 
-		// 1. Fetch the JSON which contains the HTML string
-		// Note: We must set the Referer header like the Node.js _setReferer method
+		if cachedLinks, found := linkCache.Get(fid); found {
+			return c.JSON(cachedLinks)
+		}
+
 		resp, err := client.R().
 			SetHeader("Referer", baseURL+"/share/"+shareKey).
 			Get(baseURL + "/console/video_quality_list?fid=" + fid)
@@ -143,7 +154,62 @@ func FebboxAPI(app *fiber.App) {
 			})
 		})
 
+		if len(qualities) > 0 {
+			linkCache.Set(fid, qualities, cache.DefaultExpiration)
+		}
+
 		return c.JSON(qualities)
+	})
+
+	febGroup.Get("/imdb", func(c fiber.Ctx) error {
+		fid := c.Query("fid")
+		shareKey := c.Query("shareKey")
+
+		if fid == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "at least an fid is required"})
+		}
+
+		// 1. Request data from Febbox
+		// Note: The endpoint is /console/file_more_info
+		resp, err := client.R().
+			SetHeader("Referer", baseURL+"/share/"+shareKey).
+			Get(baseURL + "/console/file_more_info?fid=" + fid)
+
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
+
+		if resp.StatusCode() != http.StatusOK {
+			return c.Status(resp.StatusCode()).SendString("Febbox returned error status")
+		}
+
+		// 2. Parse JSON response to get HTML string
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Bytes(), &data); err != nil {
+			return c.Status(500).SendString("Error parsing JSON")
+		}
+
+		htmlContent, ok := data["html"].(string)
+		if !ok {
+			// If no HTML is returned, it usually means no info was found
+			return c.JSON(ImdbResponse{IMDBId: ""})
+		}
+
+		// 3. Parse HTML using GoQuery
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlContent))
+		if err != nil {
+			return c.Status(500).SendString("Error parsing HTML content")
+		}
+
+		// 4. Find .imdb element and extract data-imdb-id
+		// JS: doc.querySelector(".imdb").getAttribute("data-imdb-id")
+		imdbID, exists := doc.Find(".imdb").Attr("data-imdb-id")
+
+		if !exists {
+			imdbID = ""
+		}
+
+		return c.JSON(ImdbResponse{IMDBId: imdbID})
 	})
 
 }
