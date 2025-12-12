@@ -106,7 +106,7 @@ func FebboxAPI(app *fiber.App) {
 		}
 
 		// 2. Unmarshal the JSON response
-		return c.Send(resp.Bytes())
+		// return c.Send(resp.Bytes())
 		var data map[string]interface{}
 		if err := json.Unmarshal(resp.Bytes(), &data); err != nil {
 			return c.Status(500).SendString(err.Error())
