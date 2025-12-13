@@ -2,19 +2,17 @@ package routes
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gofiber/fiber/v3"
 	"github.com/patrickmn/go-cache"
-	"resty.dev/v3"
-
-	"github.com/cloudresty/go-env"
+	"golang.org/x/sync/singleflight"
 )
+
+var filesGroup singleflight.Group
 
 type VideoQuality struct {
 	URL     string `json:"url"`
@@ -33,26 +31,26 @@ func FebboxAPI(app *fiber.App) {
 
 	filesCache := cache.New(10*time.Minute, 20*time.Minute)
 
-	client := resty.New()
+	client := apiClient
 	// defer client.Close()
 
-	baseURL := "https://www.febbox.com"
+	// baseURL := "https://www.febbox.com"
 	defaultHeaders := map[string]string{
 		"x-requested-with": "XMLHttpRequest",
 		"user-agent":       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
 	}
 
-	uIToken := env.Get("FEBBOX_UI_COOKIE", "")
-	if uIToken == "" {
-		uIToken = os.Getenv("FEBBOX_UI_COOKIE")
-	}
+	// uIToken := env.Get("FEBBOX_UI_COOKIE", "")
+	// if uIToken == "" {
+	// 	uIToken = os.Getenv("FEBBOX_UI_COOKIE")
+	// }
 
-	log.Println(uIToken)
+	// log.Println(uIToken)
 
-	defaultShareKey := "LofCen6W"
+	defaultShareKey = "LofCen6W"
 
 	client.SetHeaders(defaultHeaders)
-	client.SetCookie(&http.Cookie{Name: "ui", Value: uIToken})
+	client.SetCookie(&http.Cookie{Name: "ui", Value: globalAuthToken})
 
 	febGroup.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("WORKING")
@@ -69,20 +67,22 @@ func FebboxAPI(app *fiber.App) {
 			return c.JSON(cachedList)
 		}
 
-		resp, err := client.R().Get(baseURL + "/file/file_share_list?share_key=" + shareKey + "&pwd=&parent_id=" + parentId + "&is_html=0")
-		if err != nil {
-			return err
-		}
-		var data map[string]any
-		if err := json.Unmarshal(resp.Bytes(), &data); err != nil {
-			return err
-		}
+		v, _, _ := filesGroup.Do(shareKey, func() (any, error) {
+			resp, err := client.R().Get(baseURL + "/file/file_share_list?share_key=" + shareKey + "&pwd=&parent_id=" + parentId + "&is_html=0")
+			if err != nil {
+				return nil, err
+			}
+			var data map[string]any
+			if err := json.Unmarshal(resp.Bytes(), &data); err != nil {
+				return nil, err
+			}
 
-		fileList := data["data"].(map[string]any)["file_list"].([]any)
+			fileList := data["data"].(map[string]any)["file_list"].([]any)
+			filesCache.Set(shareKey, fileList, cache.DefaultExpiration)
+			return fileList, nil
+		})
 
-		filesCache.Set(shareKey, fileList, cache.DefaultExpiration)
-
-		return c.JSON(fileList)
+		return c.JSON(v)
 	})
 
 	febGroup.Get("/links", func(c fiber.Ctx) error {

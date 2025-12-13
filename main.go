@@ -31,6 +31,7 @@ func main() {
 	routes.IndexRoutes(app)
 	routes.SubtitleRoutes(app)
 	routes.FebboxAPI(app)
+	routes.StreamingRoutes(app)
 
 	app.Listen(":3000")
 }

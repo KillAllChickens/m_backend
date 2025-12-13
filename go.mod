@@ -7,6 +7,7 @@ require (
 	github.com/cloudresty/go-env v1.0.1
 	github.com/gofiber/fiber/v3 v3.0.0-rc.3
 	github.com/patrickmn/go-cache v2.1.0+incompatible
+	golang.org/x/sync v0.19.0
 	resty.dev/v3 v3.0.0-beta.4
 )
 
